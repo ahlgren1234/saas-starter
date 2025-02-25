@@ -3,11 +3,20 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Breadcrumb } from "@/components/ui/breadcrumb";
 
 export default function AdminSettingsPage() {
   return (
     <div className="container mx-auto py-10">
       <div className="space-y-6">
+        <Breadcrumb
+          items={[
+            { title: 'Dashboard', href: '/dashboard' },
+            { title: 'Admin', href: '/admin' },
+            { title: 'Settings' }
+          ]}
+        />
+
         <Card>
           <CardHeader>
             <CardTitle>Admin Settings</CardTitle>
