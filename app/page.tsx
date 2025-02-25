@@ -22,15 +22,15 @@ export default function Home() {
                 href="/register"
               >
                 Get Started
-              </a>
-              <a
+          </a>
+          <a
                 className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-8 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
                 href="https://github.com/yourusername/saas-starter"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+            target="_blank"
+            rel="noopener noreferrer"
+          >
                 GitHub
-              </a>
+          </a>
             </div>
           </div>
         </div>

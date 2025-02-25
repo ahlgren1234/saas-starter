@@ -27,6 +27,7 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -36,49 +37,34 @@ export function LoginForm() {
     },
   });
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  const onSubmit = async (data: z.infer<typeof formSchema>) => {
     try {
       setIsLoading(true);
-      setError(null);
-      console.log('Attempting login...');
-
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+        body: JSON.stringify(data),
       });
 
-      const data = await response.json();
-      console.log('Login response:', data);
-
       if (!response.ok) {
-        throw new Error(data.message || 'Something went wrong');
+        throw new Error('Login failed');
       }
 
-      // Store the token in both localStorage and cookie
-      localStorage.setItem('token', data.token);
-      Cookies.set('token', data.token, { expires: 7 }); // Cookie expires in 7 days
-      console.log('Token stored in localStorage and cookie');
+      const responseData = await response.json();
+      const { token } = responseData;
 
-      // Determine redirect URL
-      let redirectUrl = '/dashboard';
-      if (data.needsUpgrade) {
-        redirectUrl = '/settings/billing';
-      } else if (searchParams.get('from')) {
-        redirectUrl = searchParams.get('from') || '/dashboard';
+      if (token) {
+        localStorage.setItem('token', token);
+        Cookies.set('token', token);
+        router.push(searchParams.get('redirect') || '/dashboard');
       }
-
-      console.log('Redirecting to:', redirectUrl);
-      
-      // Force a hard navigation
-      window.location.href = redirectUrl;
     } catch (error) {
       console.error('Login error:', error);
-      setError(error instanceof Error ? error.message : 'Something went wrong');
+      setError(error instanceof Error ? error.message : 'Invalid email or password');
     } finally {
       setIsLoading(false);
     }
-  }
+  };
 
   return (
     <Form {...form}>
