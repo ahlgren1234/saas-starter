@@ -1,26 +1,41 @@
-import type { Metadata } from "next";
-import { GeistSans } from "geist/font/sans";
-import { GeistMono } from "geist/font/mono";
-import "./globals.css";
-import { Navbar } from "@/components/layout/navbar";
-import { SubscriptionListener } from "@/components/subscription-listener";
+import { Inter } from 'next/font/google';
+import { Toaster } from 'sonner';
+import { ThemeProvider } from '@/components/theme-provider';
+import { Navbar } from '@/components/layout/navbar';
+import { SubscriptionListener } from '@/components/subscription-listener';
+import { cn } from '@/lib/utils';
+import './globals.css';
 
-export const metadata: Metadata = {
-  title: "SaaS Starter",
-  description: "A modern SaaS starter kit built with Next.js",
+const inter = Inter({ subsets: ['latin'] });
+
+export const metadata = {
+  title: 'SaaS Starter',
+  description: 'A SaaS starter template with Next.js 14',
 };
 
-export default function RootLayout({
+export const dynamic = 'force-dynamic';
+
+export default async function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="en">
-      <body className={`${GeistSans.variable} ${GeistMono.variable} min-h-screen bg-background font-sans antialiased`}>
-        <Navbar />
-        <SubscriptionListener />
-        {children}
+    <html lang="en" suppressHydrationWarning>
+      <body className={cn('min-h-screen antialiased', inter.className)}>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <>
+            <Navbar />
+            <SubscriptionListener />
+            {children}
+          </>
+          <Toaster position="bottom-right" />
+        </ThemeProvider>
       </body>
     </html>
   );
