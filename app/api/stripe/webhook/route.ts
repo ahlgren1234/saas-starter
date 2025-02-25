@@ -1,253 +1,132 @@
-import { NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import User from '@/models/User';
 import connectDB from '@/lib/mongodb';
-import type { Stripe } from 'stripe';
 
 export async function POST(request: Request) {
   try {
+    await connectDB();
     const body = await request.text();
-    
-    // Get all headers to inspect what's being sent
     const signature = request.headers.get('stripe-signature');
-    const allHeaders = Object.fromEntries(request.headers);
-    
-    console.log('Webhook request details:', {
-      method: request.method,
-      url: request.url,
-      headers: allHeaders,
-      signatureHeader: signature,
-      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
-      bodyPreview: body.slice(0, 100) + '...',
-      bodyLength: body.length,
-    });
 
     if (!signature) {
       console.error('No stripe-signature header found');
-      return NextResponse.json(
-        { message: 'No stripe-signature header found' },
-        { status: 401 }
-      );
+      return new Response('No signature', { status: 400 });
     }
 
     if (!process.env.STRIPE_WEBHOOK_SECRET) {
       console.error('STRIPE_WEBHOOK_SECRET is not configured');
-      return NextResponse.json(
-        { message: 'Webhook secret is not configured' },
-        { status: 500 }
-      );
+      return new Response('Webhook secret not configured', { status: 500 });
     }
 
-    let event: Stripe.Event;
-    try {
-      console.log('Attempting to verify webhook signature with secret:', process.env.STRIPE_WEBHOOK_SECRET);
-      event = stripe.webhooks.constructEvent(
-        body,
-        signature,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
-      console.log('Webhook signature verified successfully for event:', event.type);
-    } catch (err) {
-      const error = err as Error;
-      console.error('Error verifying webhook signature:', {
-        error: error.message,
-        name: error.name,
-        stack: error.stack,
-        signature,
-        webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
-        bodyLength: body.length
-      });
-      return NextResponse.json(
-        { message: 'Invalid signature', error: error.message },
-        { status: 401 }
-      );
-    }
+    const event = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
 
-    console.log('Webhook event type:', event.type);
-
-    await connectDB();
-
+    // Process the event
     switch (event.type) {
       case 'checkout.session.completed': {
-        console.log('Processing checkout.session.completed');
-        const session = event.data.object as Stripe.Checkout.Session;
-        const userId = session.metadata?.userId;
-        const plan = session.metadata?.plan;
-        const subscriptionId = session.subscription as string;
-
-        console.log('Checkout session data:', { userId, plan, subscriptionId });
+        const session = event.data.object;
+        const { userId, plan, subscriptionId } = session.metadata || {};
 
         if (userId && plan && subscriptionId) {
           const user = await User.findById(userId);
           if (user) {
-            console.log('Found user:', user._id);
-            
-            // Skip subscription update for admin users
             if (user.role === 'admin') {
               console.log('Skipping subscription update for admin user:', user._id);
-              return NextResponse.json({ received: true });
+              break;
             }
-            
-            const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-            console.log('Retrieved subscription:', {
-              status: subscription.status,
-              currentPeriodEnd: subscription.current_period_end
-            });
 
-            user.subscriptionId = subscriptionId;
-            user.subscriptionPlan = plan;
-            user.subscriptionStatus = subscription.status;
-            user.subscriptionCurrentPeriodEnd = new Date(subscription.current_period_end * 1000);
-            await user.save();
-            console.log('Updated user subscription:', {
-              id: user._id,
-              status: user.subscriptionStatus,
-              plan: user.subscriptionPlan
-            });
-
-            // Return response with subscription change header
-            return NextResponse.json({ received: true }, {
-              headers: {
-                'X-Subscription-Changed': 'true',
-                'Access-Control-Expose-Headers': 'X-Subscription-Changed'
-              }
+            await User.findByIdAndUpdate(userId, {
+              subscriptionId,
+              subscriptionStatus: 'active',
+              subscriptionPlan: plan,
+              subscriptionCurrentPeriodEnd: new Date(session.expires_at * 1000),
             });
           } else {
-            console.log('User not found:', userId);
+            console.error('User not found:', userId);
           }
-        } else {
-          console.log('Missing required metadata:', { userId, plan, subscriptionId });
         }
         break;
       }
 
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted': {
-        console.log('Processing subscription update/delete');
-        const subscription = event.data.object as Stripe.Subscription;
-        const userId = subscription.metadata?.userId;
+        const subscription = event.data.object;
+        const subMetadata = subscription.metadata || {};
+        const subUserId = subMetadata.userId;
 
-        console.log('Subscription data:', { 
-          userId,
-          status: subscription.status,
-          currentPeriodEnd: subscription.current_period_end 
-        });
-
-        if (userId) {
-          const user = await User.findById(userId);
+        if (subUserId) {
+          const user = await User.findById(subUserId);
           if (user) {
-            console.log('Found user:', user._id);
-            
-            // Skip subscription update for admin users
             if (user.role === 'admin') {
               console.log('Skipping subscription update for admin user:', user._id);
-              return NextResponse.json({ received: true });
+              break;
             }
-            
-            user.subscriptionStatus = subscription.status;
-            user.subscriptionCurrentPeriodEnd = new Date(subscription.current_period_end * 1000);
-            await user.save();
-            console.log('Updated user subscription:', {
-              id: user._id,
-              status: user.subscriptionStatus
-            });
 
-            // Return response with subscription change header
-            return NextResponse.json({ received: true }, {
-              headers: {
-                'X-Subscription-Changed': 'true',
-                'Access-Control-Expose-Headers': 'X-Subscription-Changed'
-              }
+            await User.findByIdAndUpdate(subUserId, {
+              subscriptionStatus: subscription.status,
+              subscriptionCurrentPeriodEnd: new Date(subscription.current_period_end * 1000),
             });
           } else {
-            console.log('User not found:', userId);
+            console.error('User not found:', subUserId);
           }
         }
         break;
       }
 
       case 'invoice.payment_succeeded': {
-        console.log('Processing invoice.payment_succeeded');
-        const invoice = event.data.object as Stripe.Invoice;
-        if (invoice.subscription) {
-          const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string);
-          const userId = subscription.metadata?.userId;
+        const invoice = event.data.object;
+        const invMetadata = invoice.metadata || {};
+        const invUserId = invMetadata.userId;
 
-          console.log('Invoice payment succeeded:', { 
-            userId,
-            subscriptionId: invoice.subscription 
-          });
-
-          if (userId) {
-            const user = await User.findById(userId);
-            if (user) {
-              console.log('Found user:', user._id);
-              
-              // Skip subscription update for admin users
-              if (user.role === 'admin') {
-                console.log('Skipping subscription update for admin user:', user._id);
-                return NextResponse.json({ received: true });
-              }
-              
-              user.subscriptionStatus = 'active';
-              user.subscriptionCurrentPeriodEnd = new Date(subscription.current_period_end * 1000);
-              await user.save();
-              console.log('Updated user subscription:', {
-                id: user._id,
-                status: user.subscriptionStatus
-              });
-            } else {
-              console.log('User not found:', userId);
+        if (invUserId) {
+          const user = await User.findById(invUserId);
+          if (user) {
+            if (user.role === 'admin') {
+              console.log('Skipping subscription update for admin user:', user._id);
+              break;
             }
+
+            await User.findByIdAndUpdate(invUserId, {
+              subscriptionStatus: 'active',
+              subscriptionCurrentPeriodEnd: new Date(invoice.period_end * 1000),
+            });
+          } else {
+            console.error('User not found:', invUserId);
           }
         }
         break;
       }
 
       case 'invoice.payment_failed': {
-        console.log('Processing invoice.payment_failed');
-        const invoice = event.data.object as Stripe.Invoice;
-        if (invoice.subscription) {
-          const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string);
-          const userId = subscription.metadata?.userId;
+        const invoice = event.data.object;
+        const failedMetadata = invoice.metadata || {};
+        const failedUserId = failedMetadata.userId;
 
-          console.log('Invoice payment failed:', { 
-            userId,
-            subscriptionId: invoice.subscription 
-          });
-
-          if (userId) {
-            const user = await User.findById(userId);
-            if (user) {
-              console.log('Found user:', user._id);
-              
-              // Skip subscription update for admin users
-              if (user.role === 'admin') {
-                console.log('Skipping subscription update for admin user:', user._id);
-                return NextResponse.json({ received: true });
-              }
-              
-              user.subscriptionStatus = 'past_due';
-              await user.save();
-              console.log('Updated user subscription:', {
-                id: user._id,
-                status: user.subscriptionStatus
-              });
-            } else {
-              console.log('User not found:', userId);
+        if (failedUserId) {
+          const user = await User.findById(failedUserId);
+          if (user) {
+            if (user.role === 'admin') {
+              console.log('Skipping subscription update for admin user:', user._id);
+              break;
             }
+
+            await User.findByIdAndUpdate(failedUserId, {
+              subscriptionStatus: 'past_due',
+            });
+          } else {
+            console.error('User not found:', failedUserId);
           }
         }
         break;
       }
     }
 
-    return NextResponse.json({ received: true });
+    return new Response('Success', { status: 200 });
   } catch (error) {
     console.error('Stripe webhook error:', error);
-    return NextResponse.json(
-      { message: 'Webhook handler failed' },
-      { status: 400 }
-    );
+    return new Response('Webhook error', { status: 400 });
   }
 } 
