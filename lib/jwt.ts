@@ -17,6 +17,7 @@ export async function generateToken(user: IUser) {
     name: user.name,
     email: user.email,
     role: user.role,
+    avatar: user.avatar,
     isEmailVerified: user.isEmailVerified,
     subscriptionStatus: user.subscriptionStatus,
     subscriptionPlan: user.subscriptionPlan,

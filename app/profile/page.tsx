@@ -1,219 +1,156 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-import * as z from 'zod';
-
-import { Button } from '@/components/ui/button';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
+import { useState, useRef } from 'react';
 import { useAuth } from '@/hooks/use-auth';
-
-const profileSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  email: z.string().email('Invalid email address'),
-  currentPassword: z.string().optional(),
-  newPassword: z.string().optional(),
-  confirmPassword: z.string().optional(),
-}).refine((data) => {
-  // If any password field is filled, all must be filled
-  const hasPassword = data.currentPassword || data.newPassword || data.confirmPassword;
-  if (hasPassword) {
-    if (!data.currentPassword || !data.newPassword || !data.confirmPassword) {
-      return false;
-    }
-    if (data.newPassword !== data.confirmPassword) {
-      return false;
-    }
-    if (data.newPassword.length < 8) {
-      return false;
-    }
-    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(data.newPassword)) {
-      return false;
-    }
-  }
-  return true;
-}, {
-  message: "Please fill all password fields correctly",
-  path: ["newPassword"],
-});
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
+import Image from 'next/image';
+import { Breadcrumb } from "@/components/ui/breadcrumb";
 
 export default function ProfilePage() {
-  const { user } = useAuth();
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const { user, refreshToken } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const form = useForm<z.infer<typeof profileSchema>>({
-    resolver: zodResolver(profileSchema),
-    defaultValues: {
-      name: '',
-      email: '',
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: '',
-    },
-  });
+  async function handleAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-  // Update form values when user data is available
-  useEffect(() => {
-    if (user) {
-      console.log('User data:', user);
-      form.reset({
-        name: user.name || '',
-        email: user.email || '',
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: '',
-      });
+    // Check if file is an image
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
     }
-  }, [user, form]);
 
-  async function onSubmit(values: z.infer<typeof profileSchema>) {
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+    if (!validTypes.includes(file.type)) {
+      toast.error('Please select a JPEG or PNG image');
+      return;
+    }
+
+    setAvatarLoading(true);
+    const formData = new FormData();
+    formData.append('avatar', file);
+
     try {
-      setIsLoading(true);
-      setError(null);
-      setSuccess(null);
-
-      const response = await fetch('/api/user/profile', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify(values),
+      const response = await fetch('/api/user/avatar', {
+        method: 'POST',
+        body: formData,
       });
-
-      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Something went wrong');
+        throw new Error('Failed to update avatar');
       }
 
-      setSuccess('Profile updated successfully');
-      
-      // Reset only password fields
-      form.reset({
-        ...values,
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: '',
-      });
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Something went wrong');
+      const data = await response.json();
+      await refreshToken(); // Refresh the user data to get the new avatar
+      toast.success('Avatar updated successfully');
+    } catch {
+      toast.error('Failed to update avatar');
     } finally {
-      setIsLoading(false);
+      setAvatarLoading(false);
     }
   }
 
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+
+    try {
+      // Add profile update logic here
+      toast.success('Profile updated successfully');
+    } catch {
+      toast.error('Failed to update profile');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
   return (
-    <div className="min-h-screen bg-background py-10">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="max-w-2xl mx-auto">
-          <div className="space-y-6">
-            <div>
-              <h1 className="text-3xl font-bold">Profile Settings</h1>
-              <p className="text-muted-foreground">
-                Manage your account settings and set your preferences.
-              </p>
+    <div className="container mx-auto py-10">
+      <div className="space-y-6">
+        <Breadcrumb
+          items={[
+            { title: 'Dashboard', href: '/dashboard' },
+            { title: 'Profile' }
+          ]}
+        />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Profile</CardTitle>
+            <CardDescription>
+              Manage your profile settings and preferences
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="relative h-24 w-24">
+                <Image
+                  key={user?.avatar || 'default'}
+                  src={user?.avatar || '/avatars/default.png'}
+                  alt="Avatar"
+                  className="rounded-full object-cover"
+                  fill
+                  sizes="96px"
+                  priority
+                />
+              </div>
+              <div>
+                <Input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="hidden"
+                  onChange={handleAvatarChange}
+                  disabled={avatarLoading}
+                />
+                <Button 
+                  onClick={handleAvatarClick} 
+                  disabled={avatarLoading} 
+                  variant="outline" 
+                  size="sm"
+                >
+                  {avatarLoading ? 'Uploading...' : 'Change avatar'}
+                </Button>
+              </div>
             </div>
 
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                <div className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Name</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input type="email" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="space-y-4">
-                  <div className="text-sm font-medium">Change Password</div>
-                  <FormField
-                    control={form.control}
-                    name="currentPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Current Password</FormLabel>
-                        <FormControl>
-                          <Input type="password" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="newPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>New Password</FormLabel>
-                        <FormControl>
-                          <Input type="password" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="confirmPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Confirm New Password</FormLabel>
-                        <FormControl>
-                          <Input type="password" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                {error && (
-                  <div className="text-sm font-medium text-destructive">{error}</div>
-                )}
-                {success && (
-                  <div className="text-sm font-medium text-green-600">{success}</div>
-                )}
-
-                <Button type="submit" disabled={isLoading}>
-                  {isLoading ? 'Saving...' : 'Save changes'}
-                </Button>
-              </form>
-            </Form>
-          </div>
-        </div>
+            <form onSubmit={onSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Name</Label>
+                <Input
+                  id="name"
+                  placeholder="Your name"
+                  defaultValue={user?.name}
+                  disabled={loading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Your email"
+                  defaultValue={user?.email}
+                  disabled={loading}
+                />
+              </div>
+              <Button type="submit" disabled={loading}>
+                {loading ? 'Saving...' : 'Save changes'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

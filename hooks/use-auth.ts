@@ -9,6 +9,7 @@ interface User {
   name: string;
   email: string;
   role: string;
+  avatar: string;
   isEmailVerified: boolean;
   subscriptionStatus?: 'active' | 'canceled' | 'past_due' | 'unpaid' | 'incomplete' | null;
   subscriptionPlan?: string;

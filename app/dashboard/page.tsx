@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 
 export default function DashboardPage() {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
 
   const getSubscriptionStatus = () => {
     if (user?.role === 'admin') {
@@ -41,16 +41,11 @@ export default function DashboardPage() {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-8">
           {/* Header */}
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold">Dashboard</h1>
-              <p className="text-muted-foreground">
-                Welcome back, {user?.name}!
-              </p>
-            </div>
-            <Button variant="outline" onClick={() => signOut()}>
-              Sign out
-            </Button>
+          <div>
+            <h1 className="text-3xl font-bold">Dashboard</h1>
+            <p className="text-muted-foreground">
+              Welcome back, {user?.name}!
+            </p>
           </div>
 
           {/* Quick Actions */}

@@ -7,6 +7,7 @@ export interface IUser {
   email: string;
   password: string;
   role: 'user' | 'admin';
+  avatar: string;  // URL to the avatar image
   isEmailVerified: boolean;
   verificationToken?: string;
   verificationTokenExpiry?: Date;
@@ -47,6 +48,10 @@ const userSchema = new mongoose.Schema<IUser>(
       type: String,
       enum: ['user', 'admin'],
       default: 'user',
+    },
+    avatar: {
+      type: String,
+      default: '/avatars/default.png',  // Default avatar path
     },
     isEmailVerified: {
       type: Boolean,
