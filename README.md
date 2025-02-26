@@ -182,6 +182,195 @@ The application uses MongoDB as its database. Here's how to set it up:
    - Test email sending functionality
    - Update URLs in templates for production
 
+## Page Protection & Access Control
+
+### Protected Pages
+
+1. **Basic Authentication Protection**
+   ```typescript
+   // app/protected/page.tsx
+   import { auth } from '@/lib/auth'
+   
+   export default async function ProtectedPage() {
+     // This will redirect to /login if user is not authenticated
+     await auth()
+     
+     return <div>Protected Content</div>
+   }
+   ```
+
+2. **Role-Based Protection**
+   ```typescript
+   // app/admin/page.tsx
+   import { auth } from '@/lib/auth'
+   
+   export default async function AdminPage() {
+     const session = await auth()
+     
+     if (session.user.role !== 'admin') {
+       throw new Error('Unauthorized')
+     }
+     
+     return <div>Admin Content</div>
+   }
+   ```
+
+### Subscription-Based Access
+
+1. **Check Subscription Status**
+   ```typescript
+   // app/premium/page.tsx
+   import { auth } from '@/lib/auth'
+   
+   export default async function PremiumPage() {
+     const session = await auth()
+     
+     if (session.user.subscriptionStatus !== 'active') {
+       // Redirect to upgrade page
+       redirect('/settings/billing')
+     }
+     
+     return <div>Premium Content</div>
+   }
+   ```
+
+2. **Plan-Specific Features**
+   ```typescript
+   // components/feature-gate.tsx
+   export function FeatureGate({ 
+     children, 
+     requiredPlan 
+   }: { 
+     children: React.ReactNode
+     requiredPlan: 'free' | 'pro' | 'enterprise'
+   }) {
+     const { user } = useUser()
+     
+     if (!user || !hasAccess(user.subscriptionPlan, requiredPlan)) {
+       return <UpgradePrompt plan={requiredPlan} />
+     }
+     
+     return <>{children}</>
+   }
+   ```
+
+### Middleware Protection
+
+1. **Create Protected Routes**
+   ```typescript
+   // middleware.ts
+   import { NextResponse } from 'next/server'
+   import { auth } from '@/lib/auth'
+   
+   export const config = {
+     matcher: [
+       '/dashboard/:path*',
+       '/settings/:path*',
+       '/api/protected/:path*'
+     ]
+   }
+   
+   export async function middleware(request: NextRequest) {
+     const session = await auth()
+     
+     if (!session) {
+       return NextResponse.redirect(new URL('/login', request.url))
+     }
+     
+     // Check subscription for specific paths
+     if (
+       request.nextUrl.pathname.startsWith('/api/protected/premium') &&
+       session.user.subscriptionStatus !== 'active'
+     ) {
+       return NextResponse.json(
+         { error: 'Premium subscription required' },
+         { status: 403 }
+       )
+     }
+     
+     return NextResponse.next()
+   }
+   ```
+
+### Usage Examples
+
+1. **Protecting API Routes**
+   ```typescript
+   // app/api/protected/route.ts
+   import { auth } from '@/lib/auth'
+   
+   export async function GET() {
+     const session = await auth()
+     
+     if (!session) {
+       return new Response('Unauthorized', { status: 401 })
+     }
+     
+     return new Response('Protected Data')
+   }
+   ```
+
+2. **Component-Level Protection**
+   ```typescript
+   // components/premium-feature.tsx
+   export function PremiumFeature() {
+     return (
+       <FeatureGate requiredPlan="pro">
+         <div>Premium Feature Content</div>
+       </FeatureGate>
+     )
+   }
+   ```
+
+3. **Layout-Level Protection**
+   ```typescript
+   // app/(protected)/layout.tsx
+   import { auth } from '@/lib/auth'
+   
+   export default async function ProtectedLayout({
+     children
+   }: {
+     children: React.ReactNode
+   }) {
+     await auth()
+     
+     return <div>{children}</div>
+   }
+   ```
+
+### Best Practices
+
+1. **Multiple Protection Layers**
+   - Use middleware for broad route protection
+   - Implement page-level checks for specific requirements
+   - Add component-level gates for granular feature control
+
+2. **Subscription States**
+   - Handle all subscription states:
+     - `active`: Full access to paid features
+     - `past_due`: Show payment warning but maintain access
+     - `canceled`: Restrict access to paid features
+     - `incomplete`: Prompt to complete payment
+     - `incomplete_expired`: Treat as canceled
+
+3. **Grace Periods**
+   - Implement grace periods for payment issues
+   - Show warnings before access restriction
+   - Cache subscription status to prevent excessive database queries
+
+4. **UI Feedback**
+   - Show clear upgrade prompts for restricted features
+   - Provide feedback when access is denied
+   - Include direct links to upgrade/billing pages
+
+5. **Security Considerations**
+   - Always verify access on both client and server
+   - Use server-side checks for sensitive operations
+   - Implement rate limiting for API routes
+   - Keep subscription checks consistent across the application
+
+This protection system ensures your application's features are properly gated based on authentication and subscription status, while providing a good user experience with clear feedback and upgrade paths.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
