@@ -370,15 +370,3 @@ The application uses MongoDB as its database. Here's how to set it up:
    - Keep subscription checks consistent across the application
 
 This protection system ensures your application's features are properly gated based on authentication and subscription status, while providing a good user experience with clear feedback and upgrade paths.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Support
-
-If you need help with the setup or have any questions, please open an issue in the repository.
